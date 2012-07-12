@@ -14,7 +14,7 @@ class InvalidRequestException extends Exception
     /** @type string */
     private $description;
 
-    public function __construct($status, $description = '')
+    public function __construct($description = '', $status = 0)
     {
         $this->status = $status;
         $this->description = $description;

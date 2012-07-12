@@ -38,8 +38,20 @@ class GcmSender
      */
     public function __construct($key)
     {
-        $this->logger = Logger::getLogger(GcmConstants::LOG_FILE);
         $this->key = self::nonNull($key);
+    }
+
+    /**
+     * @param string $logfile
+     */
+    public function setLogger($logfile) {
+        $this->logger = Logger::getLogger($logfile);
+    }
+
+    public function log($message) {
+        if($this->logger != null) {
+            $this->logger->log($message);
+        }
     }
 
     /**
@@ -53,7 +65,7 @@ class GcmSender
      * @param GcmMessage $message to be sent, including the device's registration id.
      * @param string $registrationId device where the message will be sent.
      * @param int $retries number of retries in case of service unavailability errors.
-     * @param bool $isLast
+     * @param bool $isLast 送信後に接続を閉じる
      *
      * @return GcmResult result of the request (see its javadoc for more details)
      *
@@ -72,12 +84,12 @@ class GcmSender
         do {
 
             $attempt++;
+
             $result = $this->sendNoRetry($message, $registrationId, $isLast);
             
             $tryAgain = ($result == null && $attempt <= $retries);
             
             if ($tryAgain) {
-                throw new Exception("!!!Could not send message after " . $attempt ." attempts");
                 $sleepTime = $backOff / 2 + mt_rand(0, $backOff);
                 usleep($sleepTime);
                 if (2 * $backOff < self::MAX_BACKOFF_DELAY) {
@@ -106,32 +118,33 @@ class GcmSender
      */
     public function sendNoRetry(GcmMessage $message, $registrationId, $isLast = true) {
 
-        /** @var array */
+        /** @var ArrayData */
         $body = $this->newBody(GcmConstants::PARAM_REGISTRATION_ID, $registrationId);
+
         /** @var boolean */
         $delayWhileIdle = $message->getDelayWhileIdle();
 
         if ($delayWhileIdle != null) {
-            $this->addParameter(&$body, GcmConstants::PARAM_DELAY_WHILE_IDLE, ($delayWhileIdle ? "1" : "0") );
+            $this->addParameter($body, GcmConstants::PARAM_DELAY_WHILE_IDLE, ($delayWhileIdle ? "1" : "0") );
         }
         
         /** @var string */
         $collapseKey = $message->getCollapseKey();
 
         if ($collapseKey != null) {
-            $this->addParameter(&$body, GcmConstants::PARAM_COLLAPSE_KEY, $collapseKey);
+            $this->addParameter($body, GcmConstants::PARAM_COLLAPSE_KEY, $collapseKey);
         }
 
         $timeToLive = $message->getTimeToLive();
 
         if ($timeToLive != null) {
-            $this->addParameter(&$body, GcmConstants::PARAM_TIME_TO_LIVE, strval($timeToLive));
+            $this->addParameter($body, GcmConstants::PARAM_TIME_TO_LIVE, strval($timeToLive));
         }
         
         $messageData = $message->getData();
         
         foreach($messageData as $key => $value) {
-            $this->addParameter(&$body, GcmConstants::PARAM_PAYLOAD_PREFIX . $key, urlencode($value));
+            $this->addParameter($body, GcmConstants::PARAM_PAYLOAD_PREFIX . $key, urlencode($value));
         }
         
         /** @var $conn HttpConnection */
@@ -143,7 +156,7 @@ class GcmSender
         $status = $conn->getResponseCode();
 
         if ($status == 503) {
-            $this->logger->put("GCM service is unavailable");
+            $this->log("GCM service is unavailable");
             return null;
         }
 
@@ -153,7 +166,7 @@ class GcmSender
 
         $responseBody = $conn->getResponseBody();
         
-        $this->logger->put("ResponseBody (" . $responseBody . ")");
+        $this->log("ResponseBody (" . $responseBody . ")");
         
         $lines        = explode('\n', $responseBody);
         $index = 0;
@@ -181,14 +194,14 @@ class GcmSender
                 if ($token == GcmConstants::TOKEN_CANONICAL_REG_ID) {
                     $builder->canonicalRegistrationId($value);
                 } else {
-                    $this->logger->put("Received invalid second line from GCM: "
+                    $this->log("Received invalid second line from GCM: "
                         + $line);
                 }
             }
 
             $result = $builder->build();
             
-            $this->logger->put("Message created succesfully (" . $result . ")");
+            $this->log("Message created succesfully (" . $result . ")");
 
             return $result;
 
@@ -204,8 +217,11 @@ class GcmSender
         
     }
 
-
-
+    /**
+     * @param string $line
+     * @return array
+     * @throws Exception
+     */
     private function split($line) {
         $split = explode('=', $line, 2);
         if (count($split) != 2) {
@@ -214,31 +230,31 @@ class GcmSender
         }
         return $split;
     }
+
     /**
      * @param string $url
-     * @param array $body
+     * @param ArrayData $body
      * @param string $contentType
      * @throws InvalidArgumentException
      * @return HttpConnection
      */
-    private function post($url, $body, $contentType = self::DEFAULT_CONTENT_TYPE) {
+    private function post($url, ArrayData $body, $contentType = self::DEFAULT_CONTENT_TYPE) {
 
         if ($url == null || $body == null) {
             throw new InvalidArgumentException("arguments cannot be null");
         }
 
         if (strpos($url, 'https://') != 0) {
-            $this->logger->put("URL does not use https: " . $url);
+            $this->log("URL does not use https: " . $url);
         }
 
-        $this->logger->put("Sending POST to " . $url);
+        $this->log("Sending POST to " . $url);
 
         $urlInfo = parse_url($url);
         
-        $requestBody = http_build_query($body, '', '&');
+        $requestBody = http_build_query($body->getArrayCopy(), '', '&');
         
-        
-        $this->logger->put("POST body: " . $requestBody);
+        $this->log("POST body: " . $requestBody);
         
         /* @var HttpConnection */
         $conn = $this->getConnection($urlInfo['host']);
@@ -267,18 +283,23 @@ class GcmSender
         return $conn;
     }
 
-    private function addParameter(&$params, $name, $value) {
-        $params[self::nonNull($name)] = self::nonNull($value);
+    /**
+     * @param ArrayData $params
+     * @param string $name
+     * @param string $value
+     */
+    private function addParameter(ArrayData $params, $name, $value) {
+        $params->offsetSet(self::nonNull($name), self::nonNull($value));
     }
 
     /**
      * @param string $name
      * @param string $value
-     * @return array
+     * @return ArrayData
      */
     private function newBody($name, $value) {
-        $body = array();
-        $body[self::nonNull($name)] = self::nonNull($value);
+        $body = new ArrayData('string');
+        $body->offsetSet(self::nonNull($name), self::nonNull($value));
         return $body;
     }
 

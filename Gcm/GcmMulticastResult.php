@@ -8,7 +8,7 @@
  * Time: 19:27
  * To change this template use File | Settings | File Templates.
  */
-class GcmMulticastResult implements JsonSerializable
+class GcmMulticastResult
 {
     /** @var int final */
     private $success;
@@ -122,26 +122,6 @@ class GcmMulticastResult implements JsonSerializable
         return $string;
     }
 
-    public function JsonSerialize() {
-
-        $json = new stdClass();
-
-        $json->multicast_id = $this->getMulticastId();
-
-        $json->total = $this->getTotal();
-
-        $json->success = $this->getSuccess();
-
-        $json->failure = $this->getFailure();
-
-        $json->canonical_ids = $this->getCanonicalIds();
-
-        if($this->results->count() != 0) {
-            $json->results = $this->getResults();
-        }
-
-        return $json;
-    }
 }
 
 

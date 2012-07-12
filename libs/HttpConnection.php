@@ -9,10 +9,6 @@
 class HttpConnection
 {
 
-    private $host;
-
-    private $port;
-
     /** @var HttpHeader */
     private $requestHeader;
 
@@ -21,22 +17,19 @@ class HttpConnection
 
     private $responseBody;
 
-    private $connection;
-
-    private $errorNumber;
-
-    private $errorMessage;
-
-    private $lineBrake = "\r\n";
+    const LINE_BRAKE = "\r\n";
 
     private $timeout = 15;
 
+    /** @var SocketStream */
+    private $stream;
+
     public function __construct($host, $port, $ssl = false)
     {
-        $this->host = $host;
-        $this->port = $port;
-        $this->ssl = $ssl;
-        $this->requestHeader = new HttpHeader(array(), $this->lineBrake);
+        $streamProtocol = $ssl ? 'ssl' : 'tcp';
+        $this->stream = new SocketStream($host, $port, $streamProtocol);
+
+        $this->requestHeader = new HttpHeader(array(), self::LINE_BRAKE);
     }
 
     public function addRequestProperty($key, $value)
@@ -66,7 +59,7 @@ class HttpConnection
 
     public static function serializeAuth($user, $pass)
     {
-        return base64_encode('$user:$pass');
+        return base64_encode($user . ':' . $pass);
     }
 
     public static function serializeParams($params)
@@ -80,33 +73,17 @@ class HttpConnection
 
     public function open()
     {
-        $prefix = ($this->ssl) ? 'ssl://' : '';
-
-        $this->connection = pfsockopen($prefix . $this->host,
-            $this->port,
-            $this->errorNumber,
-            $this->errorMessage,
-            $this->timeout
-        );
+        if(!$this->stream->isConnected())
+            $this->stream->open(true);
     }
 
     public function close()
     {
-        if($this->connection) {
-            try{
-                fclose($this->connection);
-                $this->connection = null;
-            }
-            catch (Exception $e) {
-                
-            }
-        }
-            
+        if($this->stream->isConnected()) $this->stream->close();
     }
 
     private function send($path, $method, $params='', $headers = array())
     {
-
         $this->requestHeader->addProperties($headers);
         $method = strtoupper($method);
         $request = strtoupper($method) . ' ' . $path;
@@ -118,27 +95,24 @@ class HttpConnection
             $request .= $params . ' ';
         }
         
-        $request .= ' HTTP/1.0'. $this->lineBrake;
-        $request .= $this->requestHeader->toString() . $this->lineBrake;
+        $request .= ' HTTP/1.0'. self::LINE_BRAKE;
+        $request .= $this->requestHeader->toString() . self::LINE_BRAKE;
         
         if($method === 'POST' && !empty($params)) {
             $request .= $params;
         }
 
-        if (!$this->connection) {
+        if (!$this->stream->isConnected()) {
             $this->open();
         }
 
-        if ($this->connection) {
+        if ($this->stream->isConnected()) {
 
-            $response = '';
-
-            if (fwrite($this->connection, $request)) {
-                
-                while (!feof($this->connection)) {
-                    $response .= fread($this->connection, 4096);
+            if ($this->stream->write($request) !== false) {
+                $response = '';
+                while($line = $this->stream->readLine()) {
+                    $response .= $line;
                 }
-
                 $this->parseResponse($response);
 
                 return true;
@@ -155,16 +129,14 @@ class HttpConnection
 
         list($headers, $body) = explode("\n\n", $response, 2);
 
-        $this->responseHeader = HttpHeader::create($headers, $this->lineBrake);
+        $this->responseHeader = HttpHeader::create($headers, self::LINE_BRAKE);
 
         $this->responseBody = $body;
     }
 
     public function __destruct()
     {
-        if ($this->connection) {
-            $this->close();
-        }
+        $this->close();
     }
 
     public function getRequestHeader()
@@ -188,7 +160,10 @@ class HttpConnection
     }
 }
 
-
+/**
+ * ResponseCode別にしたい
+ *
+ */
 class HttpHeader
 {
 
