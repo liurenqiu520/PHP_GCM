@@ -6,6 +6,8 @@
  * Time: 15:58
  * To change this template use File | Settings | File Templates.
  */
+namespace Log;
+
 class Logger
 {
     private static $instancePool = array();

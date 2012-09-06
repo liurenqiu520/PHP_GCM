@@ -6,46 +6,68 @@
  * Time: 17:31
  * To change this template use File | Settings | File Templates.
  */
-class GcmMessage
+namespace Gcm;
+
+class Message
 {
     /** @var string */
     private $collapseKey;
+
     /** @var boolean */
     private $delayWhileIdle;
+
     /** @var int */
     private $timeToLive;
-    /** @var ArrayData */
+
+    /** @var \ArrayObject */
     private $data;
 
-    public function __construct(GcmMessageBuilder $builder)
+    /**
+     * @param MessageBuilder $builder
+     */
+    public function __construct(MessageBuilder $builder)
     {
         $this->collapseKey = $builder->getCollapseKey();
         $this->delayWhileIdle = $builder->getDelayWhileIdle();
-        $builder->getData()->setReadOnly(true);
         $this->data = $builder->getData();
         $this->timeToLive = $builder->getTimeToLive();
     }
 
+    /**
+     * @return \ArrayObject
+     */
     public function getData()
     {
         return $this->data;
     }
 
+    /**
+     * @return string
+     */
     public function getCollapseKey()
     {
         return $this->collapseKey;
     }
 
+    /**
+     * @return bool
+     */
     public function getDelayWhileIdle()
     {
         return $this->delayWhileIdle;
     }
 
+    /**
+     * @return int
+     */
     public function getTimeToLive()
     {
         return $this->timeToLive;
     }
 
+    /**
+     * @return string
+     */
     public function __toString()
     {
         $string = 'Message(';

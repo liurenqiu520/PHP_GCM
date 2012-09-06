@@ -6,7 +6,10 @@
  * Time: 16:34
  * To change this template use File | Settings | File Templates.
  */
-class GcmResultBuilder {
+namespace Gcm;
+
+class ResultBuilder
+{
 
     /** @var string */
     private $messageId = '';
@@ -17,36 +20,40 @@ class GcmResultBuilder {
 
     /**
      * @param string $value
-     * @return GcmResultBuilder
+     * @return ResultBuilder
      */
-    public function canonicalRegistrationId($value) {
+    public function canonicalRegistrationId($value)
+    {
         $this->canonicalRegistrationId = $value;
         return $this;
     }
 
     /**
      * @param string $value
-     * @return GcmResultBuilder
+     * @return ResultBuilder
      */
-    public function messageId($value) {
+    public function messageId($value)
+    {
         $this->messageId = $value;
         return $this;
     }
 
     /**
      * @param string $value
-     * @return GcmResultBuilder
+     * @return ResultBuilder
      */
-    public function errorCode($value) {
+    public function errorCode($value)
+    {
         $this->errorCode = $value;
         return $this;
     }
 
     /**
-     * @return GcmResult
+     * @return Result
      */
-    public function build() {
-        return new GcmResult($this);
+    public function build()
+    {
+        return new Result($this);
     }
 
     /**

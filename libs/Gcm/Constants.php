@@ -6,7 +6,9 @@
  * Time: 15:56
  * To change this template use File | Settings | File Templates.
  */
-class GcmConstants
+namespace Gcm;
+
+class Constants
 {
     const LOG_FILE = '/tmp/gcm.log';
     /**
@@ -19,6 +21,8 @@ class GcmConstants
      */
     const PARAM_REGISTRATION_ID = 'registration_id';
 
+
+    const PARAM_REGISTRATION_IDS = 'registration_ids';
     /**
      * HTTP parameter for collapse key.
      */
@@ -155,8 +159,4 @@ class GcmConstants
      */
     const JSON_MESSAGE_ID = 'message_id';
 
-    private function GcmConstants()
-    {
-        throw new Exception();
-    }
 }

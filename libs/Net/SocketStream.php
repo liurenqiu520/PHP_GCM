@@ -6,9 +6,10 @@
  * Time: 22:31
  * To change this template use File | Settings | File Templates.
  */
+namespace Net;
+
 class SocketStream
 {
-
     /** @var string */
     const PROTOCOL_SSL = 'ssl';
 
@@ -18,7 +19,7 @@ class SocketStream
     /** @var resource */
     private $socket;
 
-    /** @var Logger */
+    /** @var \Log\Logger */
     private $logger;
 
     /** @var int */
@@ -39,8 +40,12 @@ class SocketStream
     /** @var int */
     private $maxRetryTimes = 0;
 
-    /** @var CertificationManager */
+    /** @var \CertificationManager */
     private $certification;
+	
+	
+	/** @var boolean **/
+	private $blockMode = true;
 
     /**
      * @param string $host
@@ -61,7 +66,7 @@ class SocketStream
     }
 
     public function write($message) {
-        if (is_resource($this->socket)) {
+        if ($this->isConnected()) {
             $this->log('[SocketStream] Socket write' . $message);
             return fwrite($this->socket, $message, strlen($message));
         }
@@ -69,25 +74,35 @@ class SocketStream
     }
 
     /**
-     * @param $maxLength
-     * @param int $offset
-     * @return null|string
+     * @param int $timeout
+     * @return int
      */
-    public function read($maxLength = -1, $offset = -1) {
-        if (!feof($this->socket)) {
-            return stream_get_contents($this->socket, $maxLength, $offset);
-        }
-        return null;
+    public function select($timeout = 1000000) {
+        $read   = array($this->socket);
+        $NULL = NULL;
+        return stream_select($read, $NULL, $NULL, 0, $timeout);
     }
 
     /**
-     * @return null|string
+     * @param $maxLength
+     * @param int $offset
+     * @return NULL|string
+     */
+    public function read($maxLength = -1, $offset = -1) {
+        if ($this->isConnected() && !feof($this->socket)) {
+            return stream_get_contents($this->socket, $maxLength, $offset);
+        }
+        return NULL;
+    }
+
+    /**
+     * @return NULL|string
      */
     public function readLine() {
-        if (!feof($this->socket)) {
+        if ($this->isConnected() && !feof($this->socket)) {
             return fgets($this->socket);
         }
-        return null;
+        return NULL;
     }
 
     /**
@@ -97,7 +112,7 @@ class SocketStream
         $this->timeout = (int) $time;
     }
 
-    public function setLogger(Logger $logger) {
+    public function setLogger(\Log\Logger $logger) {
         $this->logger = $logger;
     }
 
@@ -105,7 +120,7 @@ class SocketStream
      * @param string $message
      */
     private function log($message) {
-        if($this->logger != null) {
+        if($this->logger != NULL) {
             $this->logger->log($message);
         }
     }
@@ -132,9 +147,10 @@ class SocketStream
         $retry = 0;
         while(!$connected) {
             try {
-                $connected = $this->connect($blockMode);
+				$this->blockMode = $blockMode;
+                $connected = $this->connect();
             }
-            catch (Exception $e) {
+            catch (\Exception $e) {
                 if($retry >= $this->maxRetryTimes) {
                     throw new StreamException('Connect Error :' . $e->getMessage(), $e->getCode(), $e);
                 }
@@ -147,45 +163,60 @@ class SocketStream
         }
     }
 
+    /**
+     * @return bool
+     */
     private function isSecureProtocol() {
         return $this->protocol === self::PROTOCOL_SSL
             || $this->protocol === self::PROTOCOL_TLS;
     }
 
     /**
+     * @param array $options
+     * @param array $params
      * @return resource
      */
-    private function createContext() {
+    private function createContext(array $options=array(), $params=array()) {
 
-        $context = array();
+        if($this->certification != NULL && $this->isSecureProtocol()) {
 
-        if($this->certification != null && $this->isSecureProtocol()) {
-
-            $context['ssl'] = array(
+            $options['ssl'] = array(
                 'verify_peer' => ( strlen($this->certification->getRootCertAuthFile()) > 0 ) ,
                 'cafile' => $this->certification->getRootCertAuthFile(),
                 'local_cert' => $this->certification->getLocalCertAuthFile(),
             );
 
             if( strlen($this->certification->getLocalCertPassPhrase()) > 0 ) {
-                $context['ssl']['passphrase'] = $this->certification->getLocalCertPassPhrase();
+                $options['ssl']['passphrase'] = $this->certification->getLocalCertPassPhrase();
             }
-
         }
 
-        return stream_context_create($context);
+        return stream_context_create($options, $params);
     }
 
     public function isConnected() {
         return is_resource($this->socket);
     }
 
+	public function setBlockMode($value=true)
+	{
+		if($this->isConnected()) {
+			if($value) {
+				stream_set_blocking($this->socket, 1);
+			}
+			else {
+				stream_set_blocking($this->socket, 0);
+			}
+		}
+		
+		$this->blockMode = $value ? true : false;
+	}
+
     /**
-     * @param bool $blockMode
      * @return bool
      * @throws StreamException
      */
-    private function connect($blockMode = true) {
+    private function connect() {
 
         if($this->isConnected()) {
             $this->log('[SocketStream] SocketStream is already connected.');
@@ -203,10 +234,9 @@ class SocketStream
                 (int) $errorCode
             );
         }
-
-        if(!$blockMode)
-            stream_set_blocking($this->socket, 0);
-
+		
+        $this->setBlockMode($this->blockMode);
+		
         stream_set_write_buffer($this->socket, 0);
 
         $this->log('[SocketStream] SocketStream is connected to ' . $this->getRemoteSocket());
@@ -219,7 +249,7 @@ class SocketStream
             $this->log('[SocketStream] Close connection.');
             fclose($this->socket);
         }
-        $this->socket = null;
+        $this->socket = NULL;
     }
 
     /**
@@ -241,7 +271,7 @@ class SocketStream
     /**
      * @param \CertificationManager $certification
      */
-    public function setCertification(CertificationManager $certification)
+    public function setCertification(\CertificationManager $certification)
     {
         $this->certification = $certification;
     }

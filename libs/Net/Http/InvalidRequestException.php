@@ -6,7 +6,9 @@
  * Time: 17:16
  * To change this template use File | Settings | File Templates.
  */
-class InvalidRequestException extends Exception
+namespace Net\Http;
+
+class InvalidRequestException extends \Exception
 {
     /** @type int */
     private $status;

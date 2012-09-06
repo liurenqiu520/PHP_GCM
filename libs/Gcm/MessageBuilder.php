@@ -6,10 +6,12 @@
  * Time: 16:34
  * To change this template use File | Settings | File Templates.
  */
-class GcmMessageBuilder
+namespace Gcm;
+
+class MessageBuilder
 {
 
-    /** @var ArrayData */
+    /** @var \ArrayObject */
     private $data;
 
     /** @var string */
@@ -26,12 +28,12 @@ class GcmMessageBuilder
      */
     public function __construct()
     {
-        $this->data = new ArrayData('string');
+        $this->data = new \ArrayObject();
     }
 
     /**
      * @param string $value
-     * @return GcmMessageBuilder
+     * @return MessageBuilder
      */
     public function  setCollapseKey($value)
     {
@@ -39,6 +41,9 @@ class GcmMessageBuilder
         return $this;
     }
 
+    /**
+     * @return string
+     */
     public function getCollapseKey()
     {
         return $this->collapseKey;
@@ -47,7 +52,7 @@ class GcmMessageBuilder
     /**
      * Sets the delayWhileIdle property (default value is {@literal false}).
      * @param int $value
-     * @return GcmMessageBuilder
+     * @return MessageBuilder
      */
     public function setDelayWhileIdle($value)
     {
@@ -55,6 +60,9 @@ class GcmMessageBuilder
         return $this;
     }
 
+    /**
+     * @return bool
+     */
     public function getDelayWhileIdle()
     {
         return $this->delayWhileIdle;
@@ -63,7 +71,7 @@ class GcmMessageBuilder
     /**
      * Sets the time to live, in seconds.
      * @param int $value
-     * @return GcmMessageBuilder
+     * @return MessageBuilder
      */
     public function setTimeToLive($value)
     {
@@ -71,6 +79,9 @@ class GcmMessageBuilder
         return $this;
     }
 
+    /**
+     * @return int
+     */
     public function getTimeToLive()
     {
         return $this->timeToLive;
@@ -80,7 +91,7 @@ class GcmMessageBuilder
      * Adds a key/value pair to the payload data.
      * @param string $key
      * @param string $value
-     * @return GcmMessageBuilder
+     * @return MessageBuilder
      */
     public function addData($key, $value)
     {
@@ -88,14 +99,20 @@ class GcmMessageBuilder
         return $this;
     }
 
+    /**
+     * @return \ArrayObject
+     */
     public function getData()
     {
         return $this->data;
     }
 
+    /**
+     * @return Message
+     */
     public function build()
     {
-        return new GcmMessage($this);
+        return new Message($this);
     }
 
 }

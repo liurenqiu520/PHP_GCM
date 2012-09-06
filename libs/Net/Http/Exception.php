@@ -2,11 +2,13 @@
 /**
  * Created by JetBrains PhpStorm.
  * User: Seikai
- * Date: 12/06/29
- * Time: 17:16
+ * Date: 12/09/06
+ * Time: 11:16
  * To change this template use File | Settings | File Templates.
  */
-class StreamException extends Exception
+namespace Net\Http;
+
+class Exception extends \Exception
 {
 
 }
