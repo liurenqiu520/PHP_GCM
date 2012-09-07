@@ -50,7 +50,8 @@ class Sender
     /**
      * @param \Log\Logger $logger
      */
-    public function setLogger(\Log\Logger $logger) {
+    public function setLogger(\Log\Logger $logger)
+    {
         $this->logger = $logger;
     }
 
@@ -121,6 +122,7 @@ class Sender
      * @param $registrationId
      * @return Result
      * @throws \Net\Http\InvalidRequestException
+     * @throws \InvalidArgumentException
      * @throws \Exception
      */
     public function sendNoRetry(Message $message, $registrationId)
@@ -130,6 +132,10 @@ class Sender
         $body = $this->newPostBody(Constants::PARAM_REGISTRATION_ID, $registrationId);
 
         $payload = http_build_query($this->buildPostBody($body, $message)->getArrayCopy(), '', '&');
+
+        if (strlen($payload) > Constants::MAX_PAYLOAD_SIZE) {
+            throw new \InvalidArgumentException('payload data is over size limit 4k');
+        }
 
         /** @var $response \Net\Http\Response */
         $response = $this->post(Constants::GCM_SEND_ENDPOINT, $payload);
@@ -241,8 +247,10 @@ class Sender
 
         /** @var $r \ArrayObject */
         $r = $this->nonNull($registrationIds);
-        if ($r->count() === 0) {
-            throw new \InvalidArgumentException('registrationIds cannot be empty');
+
+        //送信先は1000件までしか送れない
+        if ($r->count() === 0 || $r->count() > Constants::MAX_TARGET_DEVICE_COUNT) {
+            throw new \InvalidArgumentException('registrationIds cannot be empty and cannot be over 1000 count.');
         }
 
         $jsonRequest = new \ArrayObject();
@@ -258,6 +266,12 @@ class Sender
         }
 
         $payload = json_encode($jsonRequest);
+
+        //payload data is limit 4k
+        //TODO payload data = POSTのpayloadという理解で正しいか確認
+        if (strlen($payload) > Constants::MAX_PAYLOAD_SIZE) {
+            throw new \InvalidArgumentException('payload data is over size limit 4k');
+        }
 
         $this->log("Send JSON Payload (" . $payload . ")");
 
@@ -352,13 +366,13 @@ class Sender
 
                     $resultBuilder = new ResultBuilder();
 
-                    if(array_key_exists(Constants::JSON_MESSAGE_ID, $jsonResult))
+                    if (array_key_exists(Constants::JSON_MESSAGE_ID, $jsonResult))
                         $resultBuilder->messageId($jsonResult[Constants::JSON_MESSAGE_ID]);
 
-                    if(array_key_exists(Constants::TOKEN_CANONICAL_REG_ID, $jsonResult))
+                    if (array_key_exists(Constants::TOKEN_CANONICAL_REG_ID, $jsonResult))
                         $resultBuilder->canonicalRegistrationId($jsonResult[Constants::TOKEN_CANONICAL_REG_ID]);
 
-                    if(array_key_exists(Constants::JSON_ERROR, $jsonResult))
+                    if (array_key_exists(Constants::JSON_ERROR, $jsonResult))
                         $resultBuilder->errorCode($jsonResult[Constants::JSON_ERROR]);
 
                     $builder->addResult($resultBuilder->build());

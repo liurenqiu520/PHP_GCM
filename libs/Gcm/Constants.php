@@ -10,6 +10,16 @@ namespace Gcm;
 
 class Constants
 {
+    /**
+     * Payload Max Size
+     */
+    const MAX_PAYLOAD_SIZE = 4000;
+    /**
+     * Payload Max Size
+     */
+    const MAX_TARGET_DEVICE_COUNT = 1000;
+
+
     const LOG_FILE = '/tmp/gcm.log';
     /**
      * Endpoint for sending messages.
