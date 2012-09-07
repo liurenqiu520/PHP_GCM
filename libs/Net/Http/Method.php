@@ -15,10 +15,24 @@ class Method {
     const PUT    = 'PUT';
     const DELETE = 'DELETE';
 
-    public function create($type) {
-        $class = ucfirst($type);
-        if(class_exists($type, true)) {
-            return new $class();
+    /**
+     * @static
+     * @param $type
+     * @param $host
+     * @param string $path
+     * @return Request
+     * @throws \InvalidArgumentException
+     */
+    public static function create($type, $host, $path='/') {
+        $class = 'Net\\Http\\' . ucfirst(strtolower($type));
+        if(class_exists($class, true)) {
+            $request = new $class($host, $path);
+            if($request instanceof Request) {
+                return $request;
+            }
+            else {
+                throw new \InvalidArgumentException('$type is invalid value.[' . $type . ']');
+            }
         }
     }
 }

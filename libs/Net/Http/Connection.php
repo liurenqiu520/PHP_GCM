@@ -48,7 +48,7 @@ class Connection
             $path .= http_build_query($params, '', '&');
         }
 
-        $request = new Get($this->host, $path);
+        $request = Method::create(Method::GET, $this->host, $path);
 
         foreach($option as $key => $value) {
            $request->addProperty($key, $value);
@@ -70,7 +70,7 @@ class Connection
      */
     public function post($path, $params = array(), $option = array())
     {
-        $request = new Post($this->host, $path);
+        $request = Method::create(Method::POST, $this->host, $path);
 
         if(is_array($params)) {
             $request->setPayload(http_build_query($params, '', '&'));

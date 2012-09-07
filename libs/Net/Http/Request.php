@@ -87,6 +87,7 @@ class Request {
         $httpRequest = $this->getRequestLine();
         $httpRequest .= "\n";
         $httpRequest .= $this->header->toString();
+
         $httpRequest .= $this->getPayload();
         $httpRequest .= "\r\n";
 
@@ -103,7 +104,6 @@ class Request {
     public function __destruct() {
         $this->payload = null;
         $this->path = null;
-        $this->host = null;
         $this->method = null;
         $this->header = null;
     }

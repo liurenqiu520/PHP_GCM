@@ -48,11 +48,10 @@ class Sender
     }
 
     /**
-     * @param string $logfile
+     * @param \Log\Logger $logger
      */
-    public function setLogger($logfile)
-    {
-        $this->logger = \Log\Logger::getLogger($logfile);
+    public function setLogger(\Log\Logger $logger) {
+        $this->logger = $logger;
     }
 
     /**
@@ -431,8 +430,7 @@ class Sender
                 if ($token == Constants::TOKEN_CANONICAL_REG_ID) {
                     $builder->canonicalRegistrationId($value);
                 } else {
-                    $this->log("Received invalid second line from GCM: "
-                        + $line);
+                    $this->log("Received invalid second line from GCM: " + $line);
                 }
             }
 

@@ -21,6 +21,9 @@ class AutoLoader
 
     static function loadClass($className)
     {
+        if ( class_exists( $className, false ) || interface_exists( $className, false ) ) {
+            return true;
+        }
 
         // we assume the class AAA\BBB\CCC is placed in /AAA/BBB/CCC.php
         $className = str_replace(array('/', '\\'), DIRECTORY_SEPARATOR, $className);

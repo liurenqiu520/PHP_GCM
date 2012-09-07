@@ -11,9 +11,7 @@ class Post extends Request {
 
     public function toString() {
         $payloadSize = $this->getPayloadSize();
-        if($payloadSize > 0) {
-            $this->addProperty(Header::CONTENT_LENGTH, $payloadSize);
-        }
+        $this->addProperty(Header::CONTENT_LENGTH, $payloadSize);
         return parent::toString();
     }
 }
