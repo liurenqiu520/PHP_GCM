@@ -66,93 +66,18 @@ class Sender
     }
 
     /**
-     * Sends a message to one device, retrying in case of unavailability.
-     *
-     * <p>
-     * <strong>Note: </strong> this method uses exponential back-off to retry in
-     * case of service unavailability and hence could block the calling thread
-     * for many seconds.
-     *
-     * @param Message $message to be sent, including the device's registration id.
-     * @param string $registrationId device where the message will be sent.
-     * @param int $retries number of retries in case of service unavailability errors.
-     *
-     * @return Result result of the request (see its javadoc for more details)
-     *
-     * @throws \Exception if registrationId is {@literal null}.
-     */
-    public function send(Message $message, $registrationId, $retries)
-    {
-
-        /** @var $attempt int */
-        $attempt = 0;
-        /** @var $result Result */
-        $result = null;
-
-        $backOff = self::BACKOFF_INITIAL_DELAY;
-
-        do {
-
-            $attempt++;
-
-            $result = $this->sendNoRetry($message, $registrationId);
-
-            $tryAgain = ($result == null && $attempt <= $retries);
-
-            if ($tryAgain) {
-                $sleepTime = $backOff / 2 + mt_rand(0, $backOff);
-                usleep($sleepTime);
-                if (2 * $backOff < self::MAX_BACKOFF_DELAY) {
-                    $backOff *= 2;
-                }
-            }
-        } while ($tryAgain);
-
-        if ($result === null) {
-            throw new \Exception("Could not send message after " . $attempt . " attempts");
-        }
-
-        return $result;
-    }
-
-    /**
-     * Sends a message without retrying in case of service unavailability
-     *
      * @param Message $message
-     * @param $registrationId
-     * @return Result
-     * @throws \Net\Http\InvalidRequestException
-     * @throws \InvalidArgumentException
-     * @throws \Exception
+     * @param mixed $registrationId
+     * @param int $retries
+     * @return MulticastResult|null
      */
-    public function sendNoRetry(Message $message, $registrationId)
-    {
-
-        /** @var \ArrayObject */
-        $body = $this->newPostBody(Constants::PARAM_REGISTRATION_ID, $registrationId);
-
-        $payload = http_build_query($this->buildPostBody($body, $message)->getArrayCopy(), '', '&');
-
-        if (strlen($payload) > Constants::MAX_PAYLOAD_SIZE) {
-            throw new \InvalidArgumentException('payload data is over size limit 4k');
-        }
-
-        /** @var $response \Net\Http\Response */
-        $response = $this->post(Constants::GCM_SEND_ENDPOINT, $payload);
-
-        $status = $response->getResponseCode();
-
-        if ($status == 503) {
-            $this->log("GCM service is unavailable");
-            return null;
-        }
-
-        if ($status != 200) {
-            throw new \Net\Http\InvalidRequestException($status);
-        }
-
-        return $this->parseResponseBody($response->getResponseBody());
-    }
+	public function send(Message $message, $registrationId, $retries) {
+		
+		$registrationIds = is_array($registrationId) ? $registrationId : array($registrationId);
+		
+		return $this->_send($message, $registrationIds, $retries);
+		
+	}
 
     /**
      * @param Message $message
@@ -161,7 +86,7 @@ class Sender
      * @return MulticastResult|null
      * @throws \Exception
      */
-    public function sendMulti(Message $message, array $registrationIds, $retries)
+    private function _send(Message $message, array $registrationIds, $retries)
     {
 
         /** @var $attempt int */
@@ -185,9 +110,13 @@ class Sender
             $attempt++;
 
             $multiCastResult = $this->sendNoRetryMulti($message, $unsentRegIds);
+			
             $multiCastId = $multiCastResult->getMulticastId();
-            $multiCastIds->append($multiCastId);
-            $unsentRegIds = $this->updateStatus($unsentRegIds, $results, $multiCastResult);
+            
+			$multiCastIds->append($multiCastId);
+            
+			$unsentRegIds = $this->updateStatus($unsentRegIds, $results, $multiCastResult);
+			
             $tryAgain = ($unsentRegIds->count() !== 0 && $attempt <= $retries);
 
             if ($tryAgain) {
@@ -235,6 +164,7 @@ class Sender
         return $multiCastResult;
     }
 
+
     /**
      * @param Message $message
      * @param \ArrayObject $registrationIds
@@ -244,34 +174,16 @@ class Sender
      */
     public function sendNoRetryMulti(Message $message, \ArrayObject $registrationIds)
     {
-
         /** @var $r \ArrayObject */
         $r = $this->nonNull($registrationIds);
 
         //送信先は1000件までしか送れない
         if ($r->count() === 0 || $r->count() > Constants::MAX_TARGET_DEVICE_COUNT) {
-            throw new \InvalidArgumentException('registrationIds cannot be empty and cannot be over 1000 count.');
+            throw new \InvalidArgumentException('registrationIds cannot be empty '
+				. 'and cannot be over 1000 count.');
         }
-
-        $jsonRequest = new \ArrayObject();
-        $this->setJsonField($jsonRequest, Constants::PARAM_TIME_TO_LIVE, $message->getTimeToLive());
-        $this->setJsonField($jsonRequest, Constants::PARAM_COLLAPSE_KEY, $message->getCollapseKey());
-        $this->setJsonField($jsonRequest, Constants::PARAM_DELAY_WHILE_IDLE, $message->getDelayWhileIdle());
-        $this->setJsonField($jsonRequest, Constants::PARAM_REGISTRATION_IDS, $registrationIds->getArrayCopy());
-
-        /** @var $payloadBody \ArrayObject */
-        $payloadBody = $message->getData();
-        if ($payloadBody->count() > 0) {
-            $jsonRequest->offsetSet(Constants::JSON_PAYLOAD, $payloadBody);
-        }
-
-        $payload = json_encode($jsonRequest);
-
-        //payload data is limit 4k
-        //TODO payload data = POSTのpayloadという理解で正しいか確認
-        if (strlen($payload) > Constants::MAX_PAYLOAD_SIZE) {
-            throw new \InvalidArgumentException('payload data is over size limit 4k');
-        }
+		
+        $payload = $this->createJsonRequest($message, $registrationIds) ;
 
         $this->log("Send JSON Payload (" . $payload . ")");
 
@@ -301,7 +213,8 @@ class Sender
      * @throws \RuntimeException
      * @return \ArrayObject
      */
-    private function updateStatus(\ArrayObject $unsentRegIds, \ArrayObject $allResults, MulticastResult $multiCastResult)
+    private function updateStatus(\ArrayObject $unsentRegIds, 
+		\ArrayObject $allResults, MulticastResult $multiCastResult)
     {
 
         $results = $multiCastResult->getResults();
@@ -337,7 +250,29 @@ class Sender
             $jsonRequest->offsetSet($key, $value);
         }
     }
+	
+	/**
+	 * 
+	 *
+	 */
+	private function createJsonRequest($message, $registrationIds) {
+		
+        $jsonRequest = new \ArrayObject();
+        $this->setJsonField($jsonRequest, Constants::PARAM_TIME_TO_LIVE, $message->getTimeToLive());
+        $this->setJsonField($jsonRequest, Constants::PARAM_COLLAPSE_KEY, $message->getCollapseKey());
+        $this->setJsonField($jsonRequest, Constants::PARAM_DELAY_WHILE_IDLE, $message->getDelayWhileIdle());
+		
+        $this->setJsonField($jsonRequest, Constants::PARAM_REGISTRATION_IDS, $registrationIds->getArrayCopy());
 
+        /** @var $payloadBody \ArrayObject */
+        $payloadBody = $message->getData();
+        if ($payloadBody->count() > 0) {
+            $jsonRequest->offsetSet(Constants::JSON_PAYLOAD, $payloadBody);
+        }
+		
+		return json_encode($jsonRequest);
+	}
+	
     /**
      * @param string $responseBody
      * @return MulticastResult
@@ -412,56 +347,7 @@ class Sender
         return $value;
     }
 
-    /**
-     * @param string $responseBody
-     * @return Result
-     * @throws \Exception
-     */
-    private function parseResponseBody($responseBody)
-    {
 
-        $this->log("ResponseBody (" . $responseBody . ")");
-
-        $lines = explode('\n', $responseBody);
-        $index = 0;
-
-        if (empty($lines[$index])) {
-            throw new \Exception("Received empty response from GCM service.");
-        }
-
-        $line = $lines[$index];
-        list($token, $value) = $this->split($line);
-
-        if ($token == Constants::TOKEN_MESSAGE_ID) {
-
-            $builder = new ResultBuilder();
-            $builder->messageId($value);
-
-            $index++;
-            if (isset($lines[$index])) {
-                $line = $lines[$index];
-                list($token, $value) = $this->split($line);
-                if ($token == Constants::TOKEN_CANONICAL_REG_ID) {
-                    $builder->canonicalRegistrationId($value);
-                } else {
-                    $this->log("Received invalid second line from GCM: " + $line);
-                }
-            }
-
-            $result = $builder->build();
-
-            $this->log("Message created succesfully (" . $result . ")");
-
-            return $result;
-        } else if ($token == Constants::TOKEN_ERROR) {
-
-            $builder = new ResultBuilder();
-
-            return $builder->errorCode($value)->build();
-        } else {
-            throw new \Exception("Received invalid response from GCM: " . $line);
-        }
-    }
 
     /**
      * @param string $line
@@ -524,65 +410,6 @@ class Sender
     {
         $conn = new \Net\Http\Connection($host, 443, true);
         return $conn;
-    }
-
-    /**
-     * @param \ArrayObject $params
-     * @param string $name
-     * @param string $value
-     */
-    private function addPostParameter(\ArrayObject $params, $name, $value)
-    {
-        $params->offsetSet(self::nonNull($name), self::nonNull($value));
-    }
-
-    /**
-     * @param string $name
-     * @param string $value
-     * @return \ArrayObject
-     */
-    private function newPostBody($name, $value)
-    {
-        $body = new \ArrayObject();
-        $body->offsetSet(self::nonNull($name), self::nonNull($value));
-        return $body;
-    }
-
-    /**
-     * @param \ArrayObject $body
-     * @param Message $message
-     * @return \ArrayObject
-     */
-    private function buildPostBody(\ArrayObject $body, Message $message)
-    {
-
-        /** @var boolean */
-        $delayWhileIdle = $message->getDelayWhileIdle();
-
-        if ($delayWhileIdle != null) {
-            $this->addPostParameter($body, Constants::PARAM_DELAY_WHILE_IDLE, ($delayWhileIdle ? "1" : "0"));
-        }
-
-        /** @var string */
-        $collapseKey = $message->getCollapseKey();
-
-        if ($collapseKey != null) {
-            $this->addPostParameter($body, Constants::PARAM_COLLAPSE_KEY, $collapseKey);
-        }
-
-        $timeToLive = $message->getTimeToLive();
-
-        if ($timeToLive != null) {
-            $this->addPostParameter($body, Constants::PARAM_TIME_TO_LIVE, strval($timeToLive));
-        }
-
-        $messageData = $message->getData();
-
-        foreach ($messageData as $key => $value) {
-            $this->addPostParameter($body, Constants::PARAM_PAYLOAD_PREFIX . $key, urlencode($value));
-        }
-
-        return $body;
     }
 
     /**

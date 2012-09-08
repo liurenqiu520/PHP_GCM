@@ -6,8 +6,6 @@ Send message by Google Cloud Messaging for Android
 Example
 ----------
 
-PHP Source:
-
 ```php:
 require_once 'libs/AutoLoader.php';
 
@@ -39,7 +37,7 @@ $result = $sender->send($message, $deviceRegistIds[0], 3);
 var_dump($result);
 
 //Multi
-$result = $sender->sendMulti($message, $deviceRegistIds, 3);
+$result = $sender->send($message, $deviceRegistIds, 3);
 var_dump($result);
 ```
 
