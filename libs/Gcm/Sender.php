@@ -33,13 +33,17 @@ class Sender
     const MAX_BACKOFF_DELAY = 1024000;
 
 
-    /** @var \Log\Logger */
+    /** @var $logger \Log\Logger */
     private $logger;
 
-    /** @var string */
+    /** @var $key string */
     private $key;
 
+    /** @var $connection \Net\Http\Connection */
+    private $connection;
+
     /**
+     *
      * @param string $key
      */
     public function __construct($key)
@@ -172,7 +176,7 @@ class Sender
      * @throws \Net\Http\InvalidRequestException
      * @throws \InvalidArgumentException
      */
-    public function sendNoRetryMulti(Message $message, \ArrayObject $registrationIds)
+    private function sendNoRetryMulti(Message $message, \ArrayObject $registrationIds)
     {
         /** @var $r \ArrayObject */
         $r = $this->nonNull($registrationIds);
@@ -203,7 +207,7 @@ class Sender
 
         $this->log("Success Send Message (" . $response . ")");
 
-        return $this->parseResponseBodyMulti($response->getResponseBody());
+        return $this->parseResponseBody($response->getResponseBody());
     }
 
     /**
@@ -255,7 +259,7 @@ class Sender
 	 * 
 	 *
 	 */
-	private function createJsonRequest($message, $registrationIds) {
+	private function createJsonRequest(Message $message, \ArrayObject $registrationIds) {
 		
         $jsonRequest = new \ArrayObject();
         $this->setJsonField($jsonRequest, Constants::PARAM_TIME_TO_LIVE, $message->getTimeToLive());
@@ -278,7 +282,7 @@ class Sender
      * @return MulticastResult
      * @throws \Exception
      */
-    private function parseResponseBodyMulti($responseBody)
+    private function parseResponseBody($responseBody)
     {
         try {
 
@@ -321,8 +325,15 @@ class Sender
 
         } catch (\Exception $e) {
 
-            $this->log('json parse error:' . json_last_error());
-            throw new \Exception('json parse error:' . $e->getMessage(), json_last_error());
+            $jsonError = json_last_error();
+
+            if($jsonError !== 0) {
+                $this->log('json parse error:' . $jsonError);
+                throw new \Exception('json parse error:' . $e->getMessage(), $jsonError);
+            }
+            else {
+                throw $e;
+            }
 
         }
     }
@@ -408,8 +419,10 @@ class Sender
      */
     private function getConnection($host)
     {
-        $conn = new \Net\Http\Connection($host, 443, true);
-        return $conn;
+        if($this->connection == null) {
+            $this->connection = new \Net\Http\Connection($host, 443, true);
+        }
+        return $this->connection;
     }
 
     /**

@@ -21,30 +21,12 @@ class AutoLoader
 
     static function loadClass($className)
     {
-        if ( class_exists( $className, false ) || interface_exists( $className, false ) ) {
+        if (class_exists($className, false) || interface_exists($className, false)) {
             return true;
         }
 
         // we assume the class AAA\BBB\CCC is placed in /AAA/BBB/CCC.php
         $className = str_replace(array('/', '\\'), DIRECTORY_SEPARATOR, $className);
-
-        // we get the namespace parts
-        $namespaces = explode(DIRECTORY_SEPARATOR, $className);
-        unset($namespaces[sizeof($namespaces) - 1]);
-
-        // now we loops over namespaces
-        $current = "";
-        foreach ($namespaces as $namepart) {
-            // we chain $namepart to parent namespace string
-            $current .= '\\' . $namepart;
-            // skip if the namespace is already initialized
-            if (in_array($current, self::$loadedNamespaces)) continue;
-            // wow, we got a namespace to load, so:
-            $fnload = $current . DIRECTORY_SEPARATOR . "__init.php";
-            if (file_exists($fnload)) require($fnload);
-            // then we flag the namespace as already-loaded
-            self::$loadedNamespaces[] = $current;
-        }
 
         // we build the filename to require
         $loadFile = $className . ".php";
