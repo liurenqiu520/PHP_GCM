@@ -1,0 +1,3 @@
+[submodule "libs/Net"]
+	path = libs/Net
+	url = https://github.com/seikai/PHP_Net.git
