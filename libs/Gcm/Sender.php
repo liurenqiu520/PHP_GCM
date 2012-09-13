@@ -178,21 +178,9 @@ class Sender
      */
     private function sendNoRetryMulti(Message $message, \ArrayObject $registrationIds)
     {
-        /** @var $r \ArrayObject */
-        $r = $this->nonNull($registrationIds);
-
-        //送信先は1000件までしか送れない
-        if ($r->count() === 0 || $r->count() > Constants::MAX_TARGET_DEVICE_COUNT) {
-            throw new \InvalidArgumentException('registrationIds cannot be empty '
-				. 'and cannot be over 1000 count.');
-        }
-		
-        $payload = $this->createJsonRequest($message, $registrationIds) ;
-
-        $this->log("Send JSON Payload (" . $payload . ")");
 
         /** @var \Net\Http\Response */
-        $response = $this->post(Constants::GCM_SEND_ENDPOINT, $payload, 'application/json');
+        $response = $this->post($this->createRequest($message, $registrationIds));
 
         $status = $response->getResponseCode();
 
@@ -376,40 +364,54 @@ class Sender
     }
 
     /**
-     * @param string $url
-     * @param string $body
-     * @param string $contentType
+     * @param Message $message
+     * @param \ArrayObject $registrationIds
+     * @return \Net\Http\Request
      * @throws \InvalidArgumentException
+     */
+    public function createRequest(Message $message, \ArrayObject $registrationIds) {
+
+        /** @var $r \ArrayObject */
+        $r = $this->nonNull($registrationIds);
+
+        //送信先は1000件までしか送れない
+        if ($r->count() === 0 || $r->count() > Constants::MAX_TARGET_DEVICE_COUNT) {
+            throw new \InvalidArgumentException('registrationIds cannot be empty '
+                . 'and cannot be over 1000 count.');
+        }
+
+        $payload = $this->createJsonRequest($message, $registrationIds) ;
+
+        $this->log("Send JSON Payload (" . $payload . ")");
+
+        $request = \Net\Http\Method::create(\Net\Http\Method::POST, Constants::GCM_SEND_ENDPOINT);
+
+        //ヘッダの追加
+        $request->addProperty(\Net\Http\Header::CONTENT_TYPE, self::DEFAULT_CONTENT_TYPE);
+        $request->addProperty(\Net\Http\Header::AUTHORIZATION, 'key=' . $this->key);
+
+        $request->setPayload($payload);
+
+        $request->addProperty(\Net\Http\Header::CONTENT_TYPE, self::DEFAULT_CONTENT_TYPE);
+
+        return $request;
+    }
+
+    /**
+     *
+     * @param \Net\Http\Request $request
      * @return \Net\Http\Response
      */
-    private function post($url, $body, $contentType = '')
+    private function post(\Net\Http\Request $request)
     {
 
-        if ($url == null || $body == null) {
-            throw new \InvalidArgumentException('arguments cannot be null');
-        }
-
-        if (strpos($url, 'https://') != 0) {
-            $this->log('URL does not use https: ' . $url);
-        }
-
-        $this->log('Sending POST to ' . $url);
-
-        $urlInfo = parse_url($url);
+        $this->log('Sending POST to ' . $request->getUrl());
 
         /* @var $conn \Net\Http\Connection */
-        $conn = $this->getConnection($urlInfo['host']);
+        $conn = $this->getConnection($request->getHost());
         $conn->setTimeout(10);
-        $option = array(
-            \Net\Http\Header::CONTENT_TYPE => self::DEFAULT_CONTENT_TYPE,
-            \Net\Http\Header::AUTHORIZATION => 'key=' . $this->key
-        );
 
-        if ($contentType !== '') {
-            $option[\Net\Http\Header::CONTENT_TYPE] = $contentType;
-        }
-
-        return $conn->post($urlInfo['path'], $body, $option);
+        return $conn->send($request);
     }
 
     /**

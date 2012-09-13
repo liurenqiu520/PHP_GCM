@@ -21,7 +21,7 @@ class MessageBuilder
     private $delayWhileIdle;
 
     /** @var int */
-    private $timeToLive;
+    private $timeToLive = 3600;
 
     /**
      * GcmMessageBuilder
