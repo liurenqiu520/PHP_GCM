@@ -14,11 +14,12 @@ class Logger
 
     private $logfile;
 
-    const FORMAT_LOG  = '[LOG][%s] %s';
+    const FORMAT_LOG = '[LOG][%s] %s';
     const FORMAT_WARN = '[WARN][%s] %s';
     const FORMAT_INFO = '[INFO][%s] %s';
 
-    private function __construct($logfile) {
+    private function __construct($logfile)
+    {
         $this->logfile = $logfile;
     }
 
@@ -27,7 +28,8 @@ class Logger
      * @param $logfile
      * @return Logger
      */
-    public static function getLogger($logfile) {
+    public static function getLogger($logfile)
+    {
         if (!array_key_exists($logfile, self::$instancePool)) {
             self::$instancePool[$logfile] = new Logger($logfile);
         }
@@ -36,27 +38,33 @@ class Logger
 
     private $log = '';
 
-    public function put($log){
+    public function put($log)
+    {
         $this->log .= $log . PHP_EOL;
     }
 
-    public function warn($log){
+    public function warn($log)
+    {
         $this->log .= sprintf(self::FORMAT_WARN, date(DATE_ATOM)) . PHP_EOL;
     }
 
-    public function log($log){
+    public function log($log)
+    {
         $this->log .= sprintf(self::FORMAT_LOG, date(DATE_ATOM)) . PHP_EOL;
     }
 
-    public function info($log){
+    public function info($log)
+    {
         $this->log .= sprintf(self::FORMAT_INFO, date(DATE_ATOM)) . PHP_EOL;
     }
 
-    public function get(){
+    public function get()
+    {
         return $this->log;
     }
 
-    public function flush() {
+    public function flush()
+    {
 
         $dirName = dirname($this->logfile);
 
@@ -66,7 +74,7 @@ class Logger
 
         file_put_contents($this->logfile, $this->log, FILE_APPEND | LOCK_EX);
 
-	    $this->log = '';
+        $this->log = '';
     }
 
 }

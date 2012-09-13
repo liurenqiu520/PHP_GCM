@@ -75,13 +75,14 @@ class Sender
      * @param int $retries
      * @return MulticastResult|null
      */
-	public function send(Message $message, $registrationId, $retries) {
-		
-		$registrationIds = is_array($registrationId) ? $registrationId : array($registrationId);
-		
-		return $this->_send($message, $registrationIds, $retries);
-		
-	}
+    public function send(Message $message, $registrationId, $retries)
+    {
+
+        $registrationIds = is_array($registrationId) ? $registrationId : array($registrationId);
+
+        return $this->_send($message, $registrationIds, $retries);
+
+    }
 
     /**
      * @param Message $message
@@ -114,13 +115,13 @@ class Sender
             $attempt++;
 
             $multiCastResult = $this->sendNoRetryMulti($message, $unsentRegIds);
-			
+
             $multiCastId = $multiCastResult->getMulticastId();
-            
-			$multiCastIds->append($multiCastId);
-            
-			$unsentRegIds = $this->updateStatus($unsentRegIds, $results, $multiCastResult);
-			
+
+            $multiCastIds->append($multiCastId);
+
+            $unsentRegIds = $this->updateStatus($unsentRegIds, $results, $multiCastResult);
+
             $tryAgain = ($unsentRegIds->count() !== 0 && $attempt <= $retries);
 
             if ($tryAgain) {
@@ -205,8 +206,8 @@ class Sender
      * @throws \RuntimeException
      * @return \ArrayObject
      */
-    private function updateStatus(\ArrayObject $unsentRegIds, 
-		\ArrayObject $allResults, MulticastResult $multiCastResult)
+    private function updateStatus(\ArrayObject $unsentRegIds,
+                                  \ArrayObject $allResults, MulticastResult $multiCastResult)
     {
 
         $results = $multiCastResult->getResults();
@@ -242,18 +243,19 @@ class Sender
             $jsonRequest->offsetSet($key, $value);
         }
     }
-	
-	/**
-	 * 
-	 *
-	 */
-	private function createJsonRequest(Message $message, \ArrayObject $registrationIds) {
-		
+
+    /**
+     *
+     *
+     */
+    private function createJsonRequest(Message $message, \ArrayObject $registrationIds)
+    {
+
         $jsonRequest = new \ArrayObject();
         $this->setJsonField($jsonRequest, Constants::PARAM_TIME_TO_LIVE, $message->getTimeToLive());
         $this->setJsonField($jsonRequest, Constants::PARAM_COLLAPSE_KEY, $message->getCollapseKey());
         $this->setJsonField($jsonRequest, Constants::PARAM_DELAY_WHILE_IDLE, $message->getDelayWhileIdle());
-		
+
         $this->setJsonField($jsonRequest, Constants::PARAM_REGISTRATION_IDS, $registrationIds->getArrayCopy());
 
         /** @var $payloadBody \ArrayObject */
@@ -261,10 +263,10 @@ class Sender
         if ($payloadBody->count() > 0) {
             $jsonRequest->offsetSet(Constants::JSON_PAYLOAD, $payloadBody);
         }
-		
-		return json_encode($jsonRequest);
-	}
-	
+
+        return json_encode($jsonRequest);
+    }
+
     /**
      * @param string $responseBody
      * @return MulticastResult
@@ -315,11 +317,10 @@ class Sender
 
             $jsonError = json_last_error();
 
-            if($jsonError !== 0) {
+            if ($jsonError !== 0) {
                 $this->log('json parse error:' . $jsonError);
                 throw new \Exception('json parse error:' . $e->getMessage(), $jsonError);
-            }
-            else {
+            } else {
                 throw $e;
             }
 
@@ -347,7 +348,6 @@ class Sender
     }
 
 
-
     /**
      * @param string $line
      * @return array
@@ -369,7 +369,8 @@ class Sender
      * @return \Net\Http\Request
      * @throws \InvalidArgumentException
      */
-    public function createRequest(Message $message, \ArrayObject $registrationIds) {
+    public function createRequest(Message $message, \ArrayObject $registrationIds)
+    {
 
         /** @var $r \ArrayObject */
         $r = $this->nonNull($registrationIds);
@@ -380,7 +381,7 @@ class Sender
                 . 'and cannot be over 1000 count.');
         }
 
-        $payload = $this->createJsonRequest($message, $registrationIds) ;
+        $payload = $this->createJsonRequest($message, $registrationIds);
 
         $this->log("Send JSON Payload (" . $payload . ")");
 
@@ -421,7 +422,7 @@ class Sender
      */
     private function getConnection($host)
     {
-        if($this->connection == null) {
+        if ($this->connection == null) {
             $this->connection = new \Net\Http\Connection($host, 443, true);
         }
         return $this->connection;
