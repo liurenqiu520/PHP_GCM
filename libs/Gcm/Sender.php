@@ -114,7 +114,7 @@ class Sender
         do {
             $attempt++;
 
-            $multiCastResult = $this->sendNoRetryMulti($message, $unsentRegIds);
+            $multiCastResult = $this->sendNoRetry($message, $unsentRegIds);
 
             $multiCastId = $multiCastResult->getMulticastId();
 
@@ -131,6 +131,7 @@ class Sender
                     $backOff *= 2;
                 }
             }
+			
         } while ($tryAgain);
 
         // calculate summary
@@ -177,10 +178,10 @@ class Sender
      * @throws \Net\Http\InvalidRequestException
      * @throws \InvalidArgumentException
      */
-    private function sendNoRetryMulti(Message $message, \ArrayObject $registrationIds)
+    private function sendNoRetry(Message $message, \ArrayObject $registrationIds)
     {
 
-        /** @var \Net\Http\Response */
+        /** @var $response \Net\Http\Response */
         $response = $this->post($this->createRequest($message, $registrationIds));
 
         $status = $response->getResponseCode();
@@ -200,6 +201,7 @@ class Sender
     }
 
     /**
+     * 成功結果のマージと失敗したIDを再送信リストに入れる
      * @param \ArrayObject $unsentRegIds
      * @param \ArrayObject $allResults
      * @param MulticastResult $multiCastResult
@@ -246,16 +248,17 @@ class Sender
 
     /**
      *
-     *
+     * @param Message $message
+     * @param \ArrayObject $registrationIds
+     * @return string
      */
-    private function createJsonRequest(Message $message, \ArrayObject $registrationIds)
+    private function createPayload(Message $message, \ArrayObject $registrationIds)
     {
 
         $jsonRequest = new \ArrayObject();
         $this->setJsonField($jsonRequest, Constants::PARAM_TIME_TO_LIVE, $message->getTimeToLive());
         $this->setJsonField($jsonRequest, Constants::PARAM_COLLAPSE_KEY, $message->getCollapseKey());
         $this->setJsonField($jsonRequest, Constants::PARAM_DELAY_WHILE_IDLE, $message->getDelayWhileIdle());
-
         $this->setJsonField($jsonRequest, Constants::PARAM_REGISTRATION_IDS, $registrationIds->getArrayCopy());
 
         /** @var $payloadBody \ArrayObject */
@@ -287,27 +290,13 @@ class Sender
 
             /** @var $builder MulticastResultBuilder */
             $builder = new MulticastResultBuilder($success, $failure, $canonicalIds, $multicastId);
+			
             $results = $jsonResponse[Constants::JSON_RESULTS];
 
             if ($results != null) {
-
                 foreach ($results as $jsonResult) {
-
-                    $resultBuilder = new ResultBuilder();
-
-                    if (array_key_exists(Constants::JSON_MESSAGE_ID, $jsonResult))
-                        $resultBuilder->messageId($jsonResult[Constants::JSON_MESSAGE_ID]);
-
-                    if (array_key_exists(Constants::TOKEN_CANONICAL_REG_ID, $jsonResult))
-                        $resultBuilder->canonicalRegistrationId($jsonResult[Constants::TOKEN_CANONICAL_REG_ID]);
-
-                    if (array_key_exists(Constants::JSON_ERROR, $jsonResult))
-                        $resultBuilder->errorCode($jsonResult[Constants::JSON_ERROR]);
-
-                    $builder->addResult($resultBuilder->build());
-
+                    $builder->addResult($this->buildResult($jsonResult));
                 }
-
             }
 
 
@@ -326,6 +315,27 @@ class Sender
 
         }
     }
+	
+    /**
+	 *
+     * @param array $jsonResult
+     * @return Result
+	 */
+	private function buildResult(array $jsonResult) {
+		
+        $resultBuilder = new ResultBuilder();
+
+        if (array_key_exists(Constants::JSON_MESSAGE_ID, $jsonResult))
+            $resultBuilder->messageId($jsonResult[Constants::JSON_MESSAGE_ID]);
+
+        if (array_key_exists(Constants::TOKEN_CANONICAL_REG_ID, $jsonResult))
+            $resultBuilder->canonicalRegistrationId($jsonResult[Constants::TOKEN_CANONICAL_REG_ID]);
+
+        if (array_key_exists(Constants::JSON_ERROR, $jsonResult))
+            $resultBuilder->errorCode($jsonResult[Constants::JSON_ERROR]);
+		
+		return $resultBuilder->build()
+	}
 
     /**
      * @param array $json
@@ -347,22 +357,6 @@ class Sender
         return $value;
     }
 
-
-    /**
-     * @param string $line
-     * @return array
-     * @throws \Exception
-     */
-    private function split($line)
-    {
-        $split = explode('=', $line, 2);
-        if (count($split) != 2) {
-            throw new \Exception("Received invalid response line from GCM: "
-                , $line);
-        }
-        return $split;
-    }
-
     /**
      * @param Message $message
      * @param \ArrayObject $registrationIds
@@ -371,7 +365,7 @@ class Sender
      */
     public function createRequest(Message $message, \ArrayObject $registrationIds)
     {
-
+		
         /** @var $r \ArrayObject */
         $r = $this->nonNull($registrationIds);
 
@@ -381,20 +375,18 @@ class Sender
                 . 'and cannot be over 1000 count.');
         }
 
-        $payload = $this->createJsonRequest($message, $registrationIds);
-
-        $this->log("Send JSON Payload (" . $payload . ")");
-
         $request = \Net\Http\Method::create(\Net\Http\Method::POST, Constants::GCM_SEND_ENDPOINT);
 
         //ヘッダの追加
         $request->addProperty(\Net\Http\Header::CONTENT_TYPE, self::DEFAULT_CONTENT_TYPE);
         $request->addProperty(\Net\Http\Header::AUTHORIZATION, 'key=' . $this->key);
-
+		
+		//Requestbody
+		$payload = $this->createPayload($message, $registrationIds);
         $request->setPayload($payload);
-
-        $request->addProperty(\Net\Http\Header::CONTENT_TYPE, self::DEFAULT_CONTENT_TYPE);
-
+		
+		$this->log("Send JSON Payload (" . $payload . ")");
+		
         return $request;
     }
 
@@ -406,11 +398,11 @@ class Sender
     private function post(\Net\Http\Request $request)
     {
 
-        $this->log('Sending POST to ' . $request->getUrl());
+        $this->log('Sending POST to ' . $request->getHost());
 
         /* @var $conn \Net\Http\Connection */
         $conn = $this->getConnection($request->getHost());
-        $conn->setTimeout(10);
+        
 
         return $conn->send($request);
     }
@@ -424,6 +416,7 @@ class Sender
     {
         if ($this->connection == null) {
             $this->connection = new \Net\Http\Connection($host, 443, true);
+			$this->connection->setTimeout(10);
         }
         return $this->connection;
     }
