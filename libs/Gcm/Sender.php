@@ -12,7 +12,7 @@
 namespace Gcm;
 
 /**
- * TODO Requestの生成・送信・結果の制御を分離して送信部分を外部依存にする
+ * TODO Requestの生成・送信・結果の制御を分離して送信内容によって分岐
  * ※送信時の各登録IDに対する結果は別で裁く必要がある
  */
 class Sender
@@ -52,7 +52,7 @@ class Sender
      */
     public function __construct($key)
     {
-        $this->key = self::nonNull($key);
+        $this->key = Util::nonNull($key);
     }
 
     /**
@@ -81,11 +81,9 @@ class Sender
      */
     public function send(Message $message, $registrationId, $retries)
     {
-
         $registrationIds = is_array($registrationId) ? $registrationId : array($registrationId);
 
         return $this->_send($message, $registrationIds, $retries);
-
     }
 
     /**
@@ -106,27 +104,12 @@ class Sender
 
         $backOff = self::BACKOFF_INITIAL_DELAY;
 
-        /** @var $results \ArrayObject.<Result> */
-        $results = new \ArrayObject();
-
-        /** @var $results \ArrayObject.<string> */
-        $unsentRegIds = new \ArrayObject($registrationIds);
-
-        /** @var $results \ArrayObject.<int> */
-        $multiCastIds = new \ArrayObject();
-
         do {
             $attempt++;
 
-            $multiCastResult = $this->sendNoRetry($message, $unsentRegIds);
+            $multiCastResult = $this->sendNoRetry($message, $registrationIds);
 
-            $multiCastId = $multiCastResult->getMulticastId();
-
-            $multiCastIds->append($multiCastId);
-
-            $unsentRegIds = $this->updateStatus($unsentRegIds, $results, $multiCastResult);
-
-            $tryAgain = ($unsentRegIds->count() !== 0 && $attempt <= $retries);
+            $tryAgain = ($multiCastResult === null && $attempt <= $retries);
 
             if ($tryAgain) {
                 $sleepTime = $backOff / 2 + mt_rand(0, $backOff);
@@ -140,64 +123,21 @@ class Sender
 
         // calculate summary
 
-        if ($results->count() === 0) {
+        if ($multiCastResult === null) {
             throw new \Exception("Could not send message after " . $attempt . " attempts");
         }
 
-        return $this->buildMulticastResult($results, $registrationIds, $multiCastIds);
+        return $multiCastResult;
     }
-
-    /**
-     * 結果リストをマージしてMulticastResultをまとめる
-     *
-     * @param \ArrayObject $results
-     * @param array $registrationIds
-     * @param \ArrayObject $multiCastIds
-     * @return MulticastResult
-     */
-    public function buildMulticastResult(\ArrayObject $results, array $registrationIds, \ArrayObject $multiCastIds)
-    {
-        $success = 0;
-        $failure = 0;
-        $canonicalIds = 0;
-
-        foreach ($results as $result) {
-            /* @var $result Result */
-            if ($result->getMessageId() != null) {
-                $success++;
-                if ($result->getCanonicalRegistrationId() != null) {
-                    $canonicalIds++;
-                }
-            } else {
-                $failure++;
-            }
-        }
-
-        // build a new object with the overall result
-        $multiCastId = $multiCastIds->offsetGet(0);
-        $multiCastIds->offsetUnset(0);
-
-        $builder = new MulticastResultBuilder($success, $failure, $canonicalIds, $multiCastId);
-        $builder->retryMulticastIds($multiCastIds);
-
-        // add results, in the same order as the input
-        foreach ($registrationIds as $regId) {
-            $result = $results->offsetGet($regId);
-            $builder->addResult($result);
-        }
-
-        return $builder->build();
-    }
-
 
     /**
      * @param Message $message
-     * @param \ArrayObject $registrationIds
+     * @param array $registrationIds
      * @return MulticastResult
      * @throws \Net\Http\InvalidRequestException
      * @throws \InvalidArgumentException
      */
-    private function sendNoRetry(Message $message, \ArrayObject $registrationIds)
+    private function sendNoRetry(Message $message, array $registrationIds)
     {
 
         /** @var $response \Net\Http\Response */
@@ -214,72 +154,27 @@ class Sender
             throw new \Net\Http\InvalidRequestException($status);
         }
 
-        $this->log("Success Send Message (" . $response . ")");
+        $this->log("Success Send Message . Result(" . $response . ")");
 
         return $this->parseResponseBody($response->getResponseBody());
     }
 
-    /**
-     * 成功結果のマージと失敗したIDを再送信リストに入れる
-     * @param \ArrayObject $unsentRegIds
-     * @param \ArrayObject $allResults
-     * @param MulticastResult $multiCastResult
-     * @throws \RuntimeException
-     * @return \ArrayObject
-     */
-    private function updateStatus(\ArrayObject $unsentRegIds,
-                                  \ArrayObject $allResults, MulticastResult $multiCastResult)
-    {
-
-        $results = $multiCastResult->getResults();
-
-        if ($results->count() !== $unsentRegIds->count()) {
-            throw new \RuntimeException('Internal error: sizes do not match. ' .
-                'currentResults: ' . $results . '; unsentRegIds: ' . $unsentRegIds);
-        }
-
-        $newUnsentRegIds = new \ArrayObject();
-
-        foreach ($unsentRegIds as $key => $regId) {
-            /** @var $result Result */
-            $result = $results->offsetGet($key);
-            $allResults->offsetSet($regId, $result);
-            $error = $result->getErrorCode();
-            if ($error != null && $error == Constants::ERROR_UNAVAILABLE) {
-                $newUnsentRegIds->append($regId);
-            }
-        }
-
-        return $newUnsentRegIds;
-    }
-
-    /**
-     * @param \ArrayObject $jsonRequest
-     * @param $key
-     * @param $value
-     */
-    private function setJsonField(\ArrayObject $jsonRequest, $key, $value)
-    {
-        if ($value != null) {
-            $jsonRequest->offsetSet($key, $value);
-        }
-    }
 
     /**
      * JSONPayloadの生成
      *
      * @param Message $message
-     * @param \ArrayObject $registrationIds
+     * @param array $registrationIds
      * @return string
      */
-    private function createPayload(Message $message, \ArrayObject $registrationIds)
+    private function createPayload(Message $message, array $registrationIds)
     {
 
         $jsonRequest = new \ArrayObject();
-        $this->setJsonField($jsonRequest, Constants::PARAM_TIME_TO_LIVE, $message->getTimeToLive());
-        $this->setJsonField($jsonRequest, Constants::PARAM_COLLAPSE_KEY, $message->getCollapseKey());
-        $this->setJsonField($jsonRequest, Constants::PARAM_DELAY_WHILE_IDLE, $message->getDelayWhileIdle());
-        $this->setJsonField($jsonRequest, Constants::PARAM_REGISTRATION_IDS, $registrationIds->getArrayCopy());
+        Util::setJsonField($jsonRequest, Constants::PARAM_TIME_TO_LIVE, $message->getTimeToLive());
+        Util::setJsonField($jsonRequest, Constants::PARAM_COLLAPSE_KEY, $message->getCollapseKey());
+        Util::setJsonField($jsonRequest, Constants::PARAM_DELAY_WHILE_IDLE, $message->getDelayWhileIdle());
+        Util::setJsonField($jsonRequest, Constants::PARAM_REGISTRATION_IDS, $registrationIds);
 
         /** @var $payloadBody \ArrayObject */
         $payloadBody = $message->getData();
@@ -297,18 +192,16 @@ class Sender
      * @return MulticastResult
      * @throws \Exception
      */
-    private function parseResponseBody($responseBody)
+    public function parseResponseBody($responseBody)
     {
         try {
 
             $jsonResponse = json_decode($responseBody, true);
 
-            $this->log("Get Response (" . $jsonResponse . ")");
-
-            $success = (int)$this->getNumber($jsonResponse, Constants::JSON_SUCCESS);
-            $failure = (int)$this->getNumber($jsonResponse, Constants::JSON_FAILURE);
-            $canonicalIds = (int)$this->getNumber($jsonResponse, Constants::JSON_CANONICAL_IDS);
-            $multicastId = (int)$this->getNumber($jsonResponse, Constants::JSON_MULTICAST_ID);
+            $success = (int)Util::getNumber($jsonResponse, Constants::JSON_SUCCESS);
+            $failure = (int)Util::getNumber($jsonResponse, Constants::JSON_FAILURE);
+            $canonicalIds = (int)Util::getNumber($jsonResponse, Constants::JSON_CANONICAL_IDS);
+            $multicastId = (int)Util::getNumber($jsonResponse, Constants::JSON_MULTICAST_ID);
 
             /** @var $builder MulticastResultBuilder */
             $builder = new MulticastResultBuilder($success, $failure, $canonicalIds, $multicastId);
@@ -321,7 +214,6 @@ class Sender
                 }
             }
 
-
             return $builder->build();
 
         } catch (\Exception $e) {
@@ -329,7 +221,6 @@ class Sender
             $jsonError = json_last_error();
 
             if ($jsonError !== 0) {
-                $this->log('json parse error:' . $jsonError);
                 throw new \Exception('json parse error:' . $e->getMessage(), $jsonError);
             } else {
                 throw $e;
@@ -345,7 +236,6 @@ class Sender
      */
     private function buildResult(array $jsonResult)
     {
-
         $resultBuilder = new ResultBuilder();
 
         if (array_key_exists(Constants::JSON_MESSAGE_ID, $jsonResult))
@@ -361,39 +251,18 @@ class Sender
     }
 
     /**
-     * @param array $json
-     * @param $field
-     * @return int|float
-     * @throws \Exception
-     */
-    private function getNumber(array $json, $field)
-    {
-        $value = $json[$field];
-        if ($value === null) {
-            throw new \Exception('Missing field: ' . $field);
-        }
-
-        if (!is_numeric($value)) {
-            throw new \Exception('Field ' . $field .
-                ' does not contain a number: ' . $value);
-        }
-        return $value;
-    }
-
-    /**
      * @param Message $message
-     * @param \ArrayObject $registrationIds
+     * @param array $registrationIds
      * @return \Net\Http\Request
      * @throws \InvalidArgumentException
      */
-    public function createRequest(Message $message, \ArrayObject $registrationIds)
+    public function createRequest(Message $message, array $registrationIds)
     {
 
-        /** @var $r \ArrayObject */
-        $r = $this->nonNull($registrationIds);
+        $count = count(Util::nonNull($registrationIds));
 
         //送信先は1000件までしか送れない
-        if ($r->count() === 0 || $r->count() > Constants::MAX_TARGET_DEVICE_COUNT) {
+        if ($count === 0 || $count > Constants::MAX_TARGET_DEVICE_COUNT) {
             throw new \InvalidArgumentException('registrationIds cannot be empty '
                 . 'and cannot be over 1000 count.');
         }
@@ -408,19 +277,18 @@ class Sender
         $payload = $this->createPayload($message, $registrationIds);
         $request->setPayload($payload);
 
-        $this->log("Send JSON Payload (" . $payload . ")");
-
         return $request;
     }
 
     /**
+     * POST送信
      *
      * @param \Net\Http\Request $request
      * @return \Net\Http\Response
      */
     private function post(\Net\Http\Request $request)
     {
-        $this->log('Sending POST to ' . $request->getHost());
+        $this->log('Sending POST :' . $request->toString());
 
         /* @var $conn \Net\Http\Connection */
         $conn = $this->getConnection($request->getHost());
@@ -429,7 +297,8 @@ class Sender
     }
 
     /**
-     * Gets an {@link HttpURLConnection} given an URL.
+     * Connectionの取得
+     *
      * @param string $host;
      * @return \Net\Http\Connection
      */
@@ -442,18 +311,5 @@ class Sender
         return $this->connection;
     }
 
-    /**
-     * @static
-     * @param $argument
-     * @return mixed
-     * @throws \InvalidArgumentException
-     */
-    private static function nonNull($argument)
-    {
-        if ($argument === null) {
-            throw new \InvalidArgumentException("argument cannot be null");
-        }
-        return $argument;
-    }
 
 }
