@@ -11,6 +11,10 @@
 
 namespace Gcm;
 
+/**
+ * TODO Requestの生成・送信・結果の制御を分離して送信部分を外部依存にする
+ * ※送信時の各登録IDに対する結果は別で裁く必要がある
+ */
 class Sender
 {
     /** @var string */
@@ -24,7 +28,7 @@ class Sender
     const BACKOFF_INITIAL_DELAY = 1000;
 
     /** @var string */
-    const DEFAULT_CONTENT_TYPE = 'application/x-www-form-urlencoded;charset=UTF-8';
+    const DEFAULT_CONTENT_TYPE = 'application/json';
 
     /**
      * Maximum delay before a retry.
@@ -131,14 +135,28 @@ class Sender
                     $backOff *= 2;
                 }
             }
-			
+
         } while ($tryAgain);
 
         // calculate summary
-        if ($multiCastResult === null) {
+
+        if ($results->count() === 0) {
             throw new \Exception("Could not send message after " . $attempt . " attempts");
         }
 
+        return $this->buildMulticastResult($results, $registrationIds, $multiCastIds);
+    }
+
+    /**
+     * 結果リストをマージしてMulticastResultをまとめる
+     *
+     * @param \ArrayObject $results
+     * @param array $registrationIds
+     * @param \ArrayObject $multiCastIds
+     * @return MulticastResult
+     */
+    public function buildMulticastResult(\ArrayObject $results, array $registrationIds, \ArrayObject $multiCastIds)
+    {
         $success = 0;
         $failure = 0;
         $canonicalIds = 0;
@@ -154,6 +172,7 @@ class Sender
                 $failure++;
             }
         }
+
         // build a new object with the overall result
         $multiCastId = $multiCastIds->offsetGet(0);
         $multiCastIds->offsetUnset(0);
@@ -167,7 +186,7 @@ class Sender
             $builder->addResult($result);
         }
 
-        return $multiCastResult;
+        return $builder->build();
     }
 
 
@@ -247,6 +266,7 @@ class Sender
     }
 
     /**
+     * JSONPayloadの生成
      *
      * @param Message $message
      * @param \ArrayObject $registrationIds
@@ -271,6 +291,8 @@ class Sender
     }
 
     /**
+     * 結果のJSONを元にMulticastResultの生成
+     *
      * @param string $responseBody
      * @return MulticastResult
      * @throws \Exception
@@ -290,7 +312,7 @@ class Sender
 
             /** @var $builder MulticastResultBuilder */
             $builder = new MulticastResultBuilder($success, $failure, $canonicalIds, $multicastId);
-			
+
             $results = $jsonResponse[Constants::JSON_RESULTS];
 
             if ($results != null) {
@@ -315,14 +337,15 @@ class Sender
 
         }
     }
-	
+
     /**
-	 *
+     *
      * @param array $jsonResult
      * @return Result
-	 */
-	private function buildResult(array $jsonResult) {
-		
+     */
+    private function buildResult(array $jsonResult)
+    {
+
         $resultBuilder = new ResultBuilder();
 
         if (array_key_exists(Constants::JSON_MESSAGE_ID, $jsonResult))
@@ -333,9 +356,9 @@ class Sender
 
         if (array_key_exists(Constants::JSON_ERROR, $jsonResult))
             $resultBuilder->errorCode($jsonResult[Constants::JSON_ERROR]);
-		
-		return $resultBuilder->build()
-	}
+
+        return $resultBuilder->build();
+    }
 
     /**
      * @param array $json
@@ -365,7 +388,7 @@ class Sender
      */
     public function createRequest(Message $message, \ArrayObject $registrationIds)
     {
-		
+
         /** @var $r \ArrayObject */
         $r = $this->nonNull($registrationIds);
 
@@ -380,13 +403,13 @@ class Sender
         //ヘッダの追加
         $request->addProperty(\Net\Http\Header::CONTENT_TYPE, self::DEFAULT_CONTENT_TYPE);
         $request->addProperty(\Net\Http\Header::AUTHORIZATION, 'key=' . $this->key);
-		
-		//Requestbody
-		$payload = $this->createPayload($message, $registrationIds);
+
+        //Requestbody
+        $payload = $this->createPayload($message, $registrationIds);
         $request->setPayload($payload);
-		
-		$this->log("Send JSON Payload (" . $payload . ")");
-		
+
+        $this->log("Send JSON Payload (" . $payload . ")");
+
         return $request;
     }
 
@@ -397,12 +420,10 @@ class Sender
      */
     private function post(\Net\Http\Request $request)
     {
-
         $this->log('Sending POST to ' . $request->getHost());
 
         /* @var $conn \Net\Http\Connection */
         $conn = $this->getConnection($request->getHost());
-        
 
         return $conn->send($request);
     }
@@ -416,7 +437,7 @@ class Sender
     {
         if ($this->connection == null) {
             $this->connection = new \Net\Http\Connection($host, 443, true);
-			$this->connection->setTimeout(10);
+            $this->connection->setTimeout(10);
         }
         return $this->connection;
     }
