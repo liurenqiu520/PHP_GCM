@@ -200,7 +200,7 @@ class Sender
      * @return MulticastResult
      * @throws \Exception
      */
-    public function parseResponseBody(\Net\Http\Response $response)
+    public function parseResponse(\Net\Http\Response $response)
     {
         try {
 
