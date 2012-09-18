@@ -27,9 +27,6 @@ class Sender
      */
     const BACKOFF_INITIAL_DELAY = 1000;
 
-    /** @var string */
-    const DEFAULT_CONTENT_TYPE = 'application/json';
-
     /**
      * Maximum delay before a retry.
      * @var int
@@ -82,18 +79,18 @@ class Sender
     public function send(Message $message, $registrationId, $retries)
     {
         $registrationIds = is_array($registrationId) ? $registrationId : array($registrationId);
+        $request = $this->createRequest($message, $registrationIds);
 
-        return $this->_send($message, $registrationIds, $retries);
+        return $this->_send($request, $retries);
     }
 
     /**
-     * @param Message $message
-     * @param array $registrationIds
+     * @param $request \Net\Http\Request
      * @param $retries
      * @return MulticastResult|null
      * @throws \Exception
      */
-    private function _send(Message $message, array $registrationIds, $retries)
+    private function _send(\Net\Http\Request $request, $retries)
     {
 
         /** @var $attempt int */
@@ -107,7 +104,7 @@ class Sender
         do {
             $attempt++;
 
-            $multiCastResult = $this->sendNoRetry($message, $registrationIds);
+            $multiCastResult = $this->sendNoRetry($request);
 
             $tryAgain = ($multiCastResult === null && $attempt <= $retries);
 
@@ -131,18 +128,17 @@ class Sender
     }
 
     /**
-     * @param Message $message
-     * @param array $registrationIds
+     *
+     * @param $request \Net\Http\Request
      * @return MulticastResult
      * @throws \Net\Http\InvalidRequestException
      * @throws \InvalidArgumentException
      */
-    private function sendNoRetry(Message $message, array $registrationIds)
+    private function sendNoRetry(\Net\Http\Request $request)
     {
         try {
 
-            /** @var $response \Net\Http\Response */
-            $response = $this->post($this->createRequest($message, $registrationIds));
+            $response = $this->post($request);
 
             $status = $response->getResponseCode();
 
@@ -167,31 +163,6 @@ class Sender
         return $this->parseResponse($response);
     }
 
-
-    /**
-     * JSONPayloadの生成
-     *
-     * @param Message $message
-     * @param array $registrationIds
-     * @return string
-     */
-    private function createPayload(Message $message, array $registrationIds)
-    {
-
-        $jsonRequest = new \ArrayObject();
-        Util::setJsonField($jsonRequest, Constants::PARAM_TIME_TO_LIVE, $message->getTimeToLive());
-        Util::setJsonField($jsonRequest, Constants::PARAM_COLLAPSE_KEY, $message->getCollapseKey());
-        Util::setJsonField($jsonRequest, Constants::PARAM_DELAY_WHILE_IDLE, $message->getDelayWhileIdle());
-        Util::setJsonField($jsonRequest, Constants::PARAM_REGISTRATION_IDS, $registrationIds);
-
-        /** @var $payloadBody \ArrayObject */
-        $payloadBody = $message->getData();
-        if ($payloadBody->count() > 0) {
-            $jsonRequest->offsetSet(Constants::JSON_PAYLOAD, $payloadBody);
-        }
-
-        return json_encode($jsonRequest);
-    }
 
     /**
      * 結果のJSONを元にMulticastResultの生成
@@ -266,26 +237,11 @@ class Sender
      */
     public function createRequest(Message $message, array $registrationIds)
     {
-
-        $count = count(Util::nonNull($registrationIds));
-
-        //送信先は1000件までしか送れない
-        if ($count === 0 || $count > Constants::MAX_TARGET_DEVICE_COUNT) {
-            throw new \InvalidArgumentException('registrationIds cannot be empty '
-                . 'and cannot be over 1000 count.');
-        }
-
-        $request = \Net\Http\Method::create(\Net\Http\Method::POST, Constants::GCM_SEND_ENDPOINT);
-
-        //ヘッダの追加
-        $request->addProperty(\Net\Http\Header::CONTENT_TYPE, self::DEFAULT_CONTENT_TYPE);
-        $request->addProperty(\Net\Http\Header::AUTHORIZATION, 'key=' . $this->key);
-
-        //Requestbody
-        $payload = $this->createPayload($message, $registrationIds);
-        $request->setPayload($payload);
-
-        return $request;
+        $requestBuilder = new RequestBuilder();
+        $requestBuilder->setAuthorizationKey($this->key);
+        $requestBuilder->setMessage($message);
+        $requestBuilder->setRegistrationIds($registrationIds);
+        return $requestBuilder->build();
     }
 
     /**
