@@ -139,24 +139,32 @@ class Sender
      */
     private function sendNoRetry(Message $message, array $registrationIds)
     {
+        try {
 
-        /** @var $response \Net\Http\Response */
-        $response = $this->post($this->createRequest($message, $registrationIds));
+            /** @var $response \Net\Http\Response */
+            $response = $this->post($this->createRequest($message, $registrationIds));
 
-        $status = $response->getResponseCode();
+            $status = $response->getResponseCode();
 
-        if ($status == 503) {
-            $this->log("GCM service is unavailable");
-            return null;
+            if ($status == 503) {
+                $this->log("GCM service is unavailable");
+            }
+
+            if ($status != 200) {
+                throw new \Net\Http\InvalidRequestException('Response status is not 200 ', $status);
+            }
+
         }
+        catch (\Exception $e) {
 
-        if ($status != 200) {
-            throw new \Net\Http\InvalidRequestException($status);
+            $this->log("Catch Exception " . $e->getMessage() . '[' . $e->getCode() . ']');
+
+            return null;
         }
 
         $this->log("Success Send Message . Result(" . $response . ")");
 
-        return $this->parseResponseBody($response->getResponseBody());
+        return $this->parseResponse($response);
     }
 
 
@@ -188,15 +196,15 @@ class Sender
     /**
      * 結果のJSONを元にMulticastResultの生成
      *
-     * @param string $responseBody
+     * @param \Net\Http\Response $response
      * @return MulticastResult
      * @throws \Exception
      */
-    public function parseResponseBody($responseBody)
+    public function parseResponseBody(\Net\Http\Response $response)
     {
         try {
 
-            $jsonResponse = json_decode($responseBody, true);
+            $jsonResponse = json_decode($response->getResponseBody(), true);
 
             $success = (int)Util::getNumber($jsonResponse, Constants::JSON_SUCCESS);
             $failure = (int)Util::getNumber($jsonResponse, Constants::JSON_FAILURE);
