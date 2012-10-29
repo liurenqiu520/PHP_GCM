@@ -109,7 +109,7 @@ class Sender
 
             $multiCastResult = $this->sendNoRetry($message, $registrationIds);
 
-            $tryAgain = ($multiCastResult === null && $attempt <= $retries);
+            $tryAgain = ($multiCastResult === null);
 
             if ($tryAgain) {
                 $sleepTime = $backOff / 2 + mt_rand(0, $backOff);
@@ -119,7 +119,7 @@ class Sender
                 }
             }
 
-        } while ($tryAgain);
+        } while ($tryAgain && $attempt < $retries);
 
         // calculate summary
 
